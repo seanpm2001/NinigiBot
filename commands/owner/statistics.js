@@ -9,7 +9,7 @@ exports.run = async (client, interaction, logger, globalVars) => {
 
         let ephemeral = true;
         await interaction.deferReply({ ephemeral: ephemeral });
-
+        // Decide on format: CSV or JSON?
         let dataObject = {
             "Guild_ID": [],
             "Guild_Name": [],
@@ -52,12 +52,12 @@ exports.run = async (client, interaction, logger, globalVars) => {
         let resultString = ""
         await fs.writeFile('name.csv', csv, 'utf8', function (err) {
             if (err) {
-                resultString = "An error occured while writing JSON Object to a CSV file."
+                resultString = "An error occured while writing JSON object to a CSV file."
             } else {
-                console.log('It\'s saved!');
+                resultString = "Successfully wrote JSON to CSV file."
             }
         });
-        return sendMessage({ client: client, interaction: interaction, content: `wah wah wah` });
+        return sendMessage({ client: client, interaction: interaction, content: resultString, files: [] });
 
     } catch (e) {
         // Log error
