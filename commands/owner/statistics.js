@@ -1,9 +1,12 @@
-const Discord = require("discord.js");
-exports.run = async (client, interaction, logger, globalVars) => {
+import Discord from "discord.js";
+import sendMessage from "../../util/sendMessage";
+import logger from "../../util/logger";
+import globalVars from "../../objects/globalVars.json" with { type: "json" };
+import fs from "fs";
+import isOwner from "../../util/isOwner";
+
+export default async (client, interaction) => {
     try {
-        const sendMessage = require('../../util/sendMessage');
-        const fs = require("fs");
-        const isOwner = require('../../util/isOwner');
         let ownerBool = await isOwner(client, interaction.user);
         if (!ownerBool) return sendMessage({ client: client, interaction: interaction, content: globalVars.lackPerms });
 
@@ -50,7 +53,7 @@ exports.run = async (client, interaction, logger, globalVars) => {
         };
         let csv = `"${csvObject.rows.join('"\n"').replace(/,/g, '","')}"`;
         let resultString = ""
-        await fs.writeFile('name.csv', csv, 'utf8', function (err) {
+        fs.writeFile('name.csv', csv, 'utf8', function (err) {
             if (err) {
                 resultString = "An error occured while writing JSON object to a CSV file."
             } else {
@@ -60,12 +63,11 @@ exports.run = async (client, interaction, logger, globalVars) => {
         return sendMessage({ client: client, interaction: interaction, content: resultString, files: [] });
 
     } catch (e) {
-        // Log error
         logger(e, client, interaction);
     };
 };
 
-module.exports.config = {
+export const config = {
     name: "statistics",
     aliases: [],
     description: "Print Ninigi stats.",
