@@ -5,8 +5,9 @@
   "main": "forever.js",
   "type": "module",
   "dependencies": {
-    "@mapbox/node-pre-gyp": "^1.0.11",
-    "@sapphire/async-queue": "^1.5.2",
+    "@pkmn/data": "^0.9.9",
+    "@pkmn/dex": "^0.9.9",
+    "@pkmn/sim": "^0.9.9",
     "axios": "^1.7.2",
     "canvas": "^2.11.2",
     "cron": "^3.1.7",
@@ -17,7 +18,6 @@
     "minimist": "^1.2.8",
     "owoify-js": "^2.0.0",
     "path": "^0.12.7",
-    "pokemon-showdown": "github:smogon/pokemon-showdown",
     "pureimage": "^0.4.13",
     "sequelize": "^6.37.3",
     "sqlite3": "^5.1.7",
@@ -25,7 +25,7 @@
     "xmlhttprequest": "^1.8.0"
   },
   "devDependencies": {
-    "mocha": "^10.4.0"
+    "mocha": "^10.6.0"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

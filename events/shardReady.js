@@ -1,20 +1,9 @@
-import Discord from "discord.js";
-import globalVars from "../objects/globalVars.json" with { type: "json" };
 import getTime from "../util/getTime.js";
-import stan from "../affairs/stan.js";
-import birthday from "../affairs/birthday.js";
+import logger from "../util/logger.js";
 
 export default async (client, id) => {
     try {
-        let timestamp = await getTime(client);
-        let presence = initPresence();
-        globalVars.presence = presence;
-        // Set bot status
-        await client.user.setPresence(presence);
-        console.log(`Presence set to "${client.user.presence.activities[0].type} ${client.user.presence.activities[0].name}"`);
-        // Start affairs
-        stan(client);
-        birthday(client);
+        let timestamp = getTime();
         // const storedBalances = await Users.findAll();
         // storedBalances.forEach(b => bank.currency.set(b.user_id, b));
         // Console log status
@@ -22,10 +11,6 @@ export default async (client, id) => {
 
     } catch (e) {
         console.log(e);
+        logger({ exception: e, client: client });
     };
-};
-
-function initPresence() {
-    let presence = { activities: [{ name: 'the lake theme', type: Discord.ActivityType.Listening }], status: 'idle' };
-    return presence;
 };

@@ -1,13 +1,25 @@
 // Global
-import Discord from "discord.js";
+import {
+    InteractionType,
+    ComponentType,
+    ActionRowBuilder,
+    EmbedBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
+} from "discord.js";
 import logger from "../util/logger.js";
 import globalVars from "../objects/globalVars.json" with { type: "json" };
+import config from "../config.json" with { type: "json" };
 import sendMessage from "../util/sendMessage.js";
 import axios from "axios";
 import fs from "fs";
 // Pokémon
-import pkm from "pokemon-showdown";
-const { Dex } = pkm;
+import { Dex } from '@pkmn/dex';
+import { Dex as DexSim } from '@pkmn/sim';
+import { Generations } from '@pkmn/data';
 import getPokemon from "../util/pokemon/getPokemon.js";
 import getWhosThatPokemon from "../util/pokemon/getWhosThatPokemon.js";
 // Monster Hunter
@@ -27,12 +39,31 @@ import DQMSkillsJSON from "../submodules/DQM3-db/objects/skills.json" with { typ
 import DQMTalentsJSON from "../submodules/DQM3-db/objects/talents.json" with { type: "json"};
 // Database
 import { getEphemeralDefault } from "../database/dbServices/user.api.js";
-import { getShopTrophies, getEventTrophies, getBuyableShopTrophies } from "../database/dbServices/trophy.api.js";
+import {
+    getShopTrophies,
+    getEventTrophies,
+    getBuyableShopTrophies
+} from "../database/dbServices/trophy.api.js";
 // Other util
 import isAdmin from "../util/isAdmin.js";
 import capitalizeString from "../util/capitalizeString.js";
 import getUserInfoSlice from "../util/userinfo/getUserInfoSlice.js";
 import getTrophyEmbedSlice from "../util/trophies/getTrophyEmbedSlice.js";
+
+// Pokémon
+const gens = new Generations(Dex);
+// Helldivers
+let apiHelldivers = "https://helldiverstrainingmanual.com/api/v1/";
+// Persona 5
+// Submodule is documented in persona5 command
+let skillMapRoyal
+eval(fs.readFileSync("submodules/persona5_calculator/data/SkillDataRoyal.js", "utf8").replace("var", ""));
+let personaMapRoyal;
+eval(fs.readFileSync("submodules/persona5_calculator/data/PersonaDataRoyal.js", "utf8").replace("var", ""));
+let itemMapRoyal;
+eval(fs.readFileSync("submodules/persona5_calculator/data/ItemDataRoyal.js", "utf8").replace("var", ""));
+// Genshin Impact
+let giAPI = `https://genshin.jmp.blue/`;
 
 export default async (client, interaction) => {
     try {
@@ -46,60 +77,58 @@ export default async (client, interaction) => {
         // Common variables
         let pkmQuizModalId = 'pkmQuizModal';
         switch (interaction.type) {
-            case Discord.InteractionType.ApplicationCommand:
-                if (!interaction.member) return sendMessage({ client: client, interaction: interaction, content: `Sorry, you're not allowed to use commands in private messages!\nThis is because a lot of the responses require a server to be present.\nDon't worry, similar to this message, most of my replies will be invisible to other server members!` });
+            case InteractionType.ApplicationCommand:
                 // Grab the command data from the client.commands Enmap
                 let cmd;
                 let commandName = interaction.commandName.toLowerCase().replace(" ", "");
                 // Slower? command checker, since some commands user capitalization
                 await client.commands.forEach(command => {
-                    if (command.config.name.toLowerCase().replace(" ", "") == commandName) cmd = client.commands.get(commandName);
+                    if (command.commandObject.name.toLowerCase().replace(" ", "") == commandName) cmd = client.commands.get(commandName);
                 });
-                if (!cmd) {
-                    if (client.aliases.has(commandName)) cmd = client.commands.get(client.aliases.get(commandName));
-                };
                 // Run the command
                 if (cmd) {
-                    try {
-                        let ephemeralDefault = await getEphemeralDefault(interaction.user.id);
-                        if (ephemeralDefault === null) ephemeralDefault = true;
-                        await cmd.default(client, interaction, ephemeralDefault);
-                    } catch (e) {
-                        // console.log(e);
-                        return;
-                    };
+                    let ephemeralDefault = await getEphemeralDefault(interaction.user.id);
+                    if (ephemeralDefault === null) ephemeralDefault = true;
+                    await cmd.default(interaction, ephemeralDefault);
                     return;
                 } else {
                     return;
                 };
-            case Discord.InteractionType.MessageComponent:
+            case InteractionType.MessageComponent:
                 switch (interaction.componentType) {
-                    case Discord.ComponentType.Button:
+                    case ComponentType.Button:
                         let messageObject = null;
                         if (!interaction.customId) return;
+                        let contentReturn, embedsReturn, componentsReturn, filesReturn = null;
                         let pkmQuizGuessButtonIdStart = "pkmQuizGuess";
-                        if (interaction.user.id !== interaction.message.interaction.user.id &&
-                            !interaction.customId.startsWith(pkmQuizGuessButtonIdStart)
-                        ) return sendMessage({ client: client, interaction: interaction, content: `Only ${interaction.message.interaction.user} can use this button as the original interaction was used by them!`, ephemeral: true });
+                        // Check for behaviour of interacting with buttons depending on user
+                        let isOriginalUser = (interaction.user.id == interaction.message.interaction?.user.id);
+                        let editOriginalMessage = (isOriginalUser ||
+                            interaction.customId.startsWith(pkmQuizGuessButtonIdStart) ||
+                            !interaction.message.interaction);
+
                         let pkmQuizModalGuessId = `pkmQuizModalGuess|${customIdSplit[1]}`;
+                        // Response in case of forfeit/reveal
                         if (interaction.customId.startsWith("pkmQuizReveal")) {
-                            // Response in case of forfeit/reveal
                             let pkmQuizRevealCorrectAnswer = interaction.message.components[0].components[0].customId.split("|")[1];
                             let pkmQuizRevealMessageObject = await getWhosThatPokemon({ pokemon: pkmQuizRevealCorrectAnswer, winner: interaction.user, reveal: true });
-                            return interaction.update({ content: pkmQuizRevealMessageObject.content, files: pkmQuizRevealMessageObject.files, embeds: pkmQuizRevealMessageObject.embeds, components: [] });
+                            contentReturn = pkmQuizRevealMessageObject.content;
+                            embedsReturn = pkmQuizRevealMessageObject.embeds;
+                            filesReturn = pkmQuizRevealMessageObject.files;
                         } else if (interaction.customId.startsWith(pkmQuizGuessButtonIdStart)) {
                             // Who's That Pokémon? modal
-                            const pkmQuizModal = new Discord.ModalBuilder()
+                            const pkmQuizModal = new ModalBuilder()
                                 .setCustomId(pkmQuizModalId)
                                 .setTitle("Who's That Pokémon?");
-                            const pkmQuizModalGuessInput = new Discord.TextInputBuilder()
+                            const pkmQuizModalGuessInput = new TextInputBuilder()
                                 .setCustomId(pkmQuizModalGuessId)
                                 .setLabel("Put in your guess!")
                                 .setPlaceholder("Azelf-Mega-Y")
-                                .setStyle(Discord.TextInputStyle.Short)
+                                .setStyle(TextInputStyle.Short)
                                 .setMaxLength(64)
                                 .setRequired(true);
-                            const pkmQuizActionRow = new Discord.ActionRowBuilder().addComponents(pkmQuizModalGuessInput);
+                            const pkmQuizActionRow = new ActionRowBuilder()
+                                .addComponents(pkmQuizModalGuessInput);
                             pkmQuizModal.addComponents(pkmQuizActionRow);
                             return interaction.showModal(pkmQuizModal);
                         } else if (interaction.customId.startsWith("pkm")) {
@@ -114,12 +143,14 @@ export default async (client, interaction) => {
                             let learnsetBool = (customIdSplit[1] == "true");
                             let shinyBool = (customIdSplit[2] == "true");
                             let generationButton = customIdSplit[3];
+                            let genData = gens.get(generationButton);
                             newPokemonName = newPokemonName.label;
-                            let pokemon = Dex.mod(`gen${generationButton}`).species.get(newPokemonName);
+                            let pokemon = Dex.species.get(newPokemonName);
                             if (!pokemon || !pokemon.exists) return;
-                            messageObject = await getPokemon({ client: client, interaction: interaction, pokemon: pokemon, learnsetBool: learnsetBool, generation: generationButton, shinyBool: shinyBool });
+                            messageObject = await getPokemon({ interaction: interaction, pokemon: pokemon, genData: genData, learnsetBool: learnsetBool, generation: generationButton, shinyBool: shinyBool });
                             if (!messageObject) return;
-                            return interaction.update({ embeds: [messageObject.embeds], components: messageObject.components });
+                            embedsReturn = messageObject.embeds;
+                            componentsReturn = messageObject.components;
                         } else if (interaction.customId.startsWith("mhSub")) {
                             // Monster Hunter forms
                             let newMonsterName = null;
@@ -134,9 +165,10 @@ export default async (client, interaction) => {
                                 if (monster.name == newMonsterName) monsterData = monster;
                             });
                             if (!monsterData) return;
-                            messageObject = await getMHMonster(client, interaction, monsterData);
+                            messageObject = await getMHMonster(interaction, monsterData);
                             if (!messageObject) return;
-                            return interaction.update({ embeds: [messageObject.embeds], components: messageObject.components });
+                            embedsReturn = messageObject.embeds;
+                            componentsReturn = messageObject.components;
                         } else if (interaction.customId.startsWith("mhquests")) {
                             // Monster Hunter quests
                             let mhQuestsDirection = customIdSplit[1];
@@ -160,7 +192,8 @@ export default async (client, interaction) => {
                             if (mhQuestsPage < 1) mhQuestsPage = 1;
                             if (mhQuestsPage > mhQuestsPagesTotal) mhQuestsPage = mhQuestsPagesTotal;
                             let mhQuestsMessageObject = await getMHQuests({ client: client, interaction: interaction, gameName: mhQuestsGameName, page: mhQuestsPage });
-                            return interaction.update({ embeds: [mhQuestsMessageObject.embeds], components: mhQuestsMessageObject.components });
+                            embedsReturn = mhQuestsMessageObject.embeds;
+                            componentsReturn = mhQuestsMessageObject.components;
                         } else if (interaction.customId.startsWith("splatfest")) {
                             // Splatfest
                             let splatfestDirection = customIdSplit[1];
@@ -175,9 +208,11 @@ export default async (client, interaction) => {
                                     break;
                             };
                             let splatfestMessageObject = await getSplatfests({ client: client, interaction: interaction, page: splatfestPage, region: splatfestRegion });
-                            return interaction.update({ embeds: [splatfestMessageObject.embeds], components: splatfestMessageObject.components });
+                            embedsReturn = splatfestMessageObject.embeds;
+                            componentsReturn = splatfestMessageObject.components;
                         } else if (interaction.customId.includes("minesweeper")) {
                             // Minesweeper
+                            if (!isOriginalUser) return sendMessage({ interaction: interaction, content: `Only ${interaction.message.interaction.user} can use this button as the original interaction was used by them!`, ephemeral: true });
                             let componentsCopy = interaction.message.components;
                             await componentsCopy.forEach(async function (part, index) {
                                 await this[index].toJSON().components.forEach(function (part2, index2) {
@@ -187,60 +222,66 @@ export default async (client, interaction) => {
                                     };
                                 }, this[index].toJSON().components);
                             }, componentsCopy);
-                            return interaction.update({ components: componentsCopy });
+                            componentsReturn = componentsCopy;
                         } else if (interaction.customId.startsWith("bgd")) {
                             // Trophy shop
                             const offset = parseInt(interaction.customId.substring(3));
-                            let trophy_slice = await getTrophyEmbedSlice(client, offset);
-                            return interaction.update({ embeds: [trophy_slice.embed], components: [trophy_slice.components] });
+                            let trophy_slice = await getTrophyEmbedSlice(offset);
+                            embedsReturn = [trophy_slice.embed];
+                            componentsReturn = [trophy_slice.components];
                         } else if (interaction.customId.startsWith("usf")) {
                             // Userinfo
                             const data = interaction.customId.match(/usf([0-9]+):([0-9]+)/);
                             const page = parseInt(data[1]);
                             const user = data[2];
-                            let userinfo_page = await getUserInfoSlice(client, interaction, page, { id: user });
-                            return interaction.update({ embeds: [userinfo_page.embeds], components: [userinfo_page.components] });
+                            let userinfo_page = await getUserInfoSlice(interaction, page, { id: user });
+                            embedsReturn = [userinfo_page.embeds];
+                            componentsReturn = [userinfo_page.components];
                         } else {
                             // Other buttons
                             return;
                         };
-                    case Discord.ComponentType.StringSelect:
+                        // Force proper arrays
+                        if (embedsReturn && !Array.isArray(embedsReturn)) embedsReturn = [embedsReturn];
+                        if (componentsReturn && !Array.isArray(componentsReturn)) componentsReturn = [componentsReturn];
+                        if (filesReturn && !Array.isArray(filesReturn)) filesReturn = [filesReturn];
+                        if (editOriginalMessage) {
+                            interaction.update({ content: contentReturn, embeds: embedsReturn, components: componentsReturn, files: filesReturn });
+                        } else {
+                            interaction.reply({ content: contentReturn, embeds: embedsReturn, components: componentsReturn, files: filesReturn, ephemeral: true });
+                        };
+                    case ComponentType.StringSelect:
                         if (interaction.customId == 'role-select') {
-                            try {
-                                let serverApi = await import("../database/dbServices/server.api.js");
-                                serverApi = await serverApi.default();
-                                // Toggle selected role
-                                const rolesArray = [];
-                                for await (const value of interaction.values) {
-                                    const roleArrayItem = await interaction.guild.roles.fetch(value);
-                                    rolesArray.push(roleArrayItem);
-                                };
-                                if (rolesArray.length < 1) return sendMessage({ client: client, interaction: interaction, content: `None of the selected roles are valid.` });
-                                let adminBool = isAdmin(client, interaction.guild.members.me);
-
-                                let roleSelectReturnString = "Role toggling results:\n";
-                                for await (const role of rolesArray) {
-                                    let checkRoleEligibility = await serverApi.EligibleRoles.findOne({ where: { role_id: role.id } });
-                                    if (!checkRoleEligibility) roleSelectReturnString += `❌ ${role} is not available to selfassign anymore.\n`;
-                                    if (role.managed) roleSelectReturnString += `❌ I can't manage ${role} because it is being automatically managed by an integration.\n`;
-                                    if (interaction.guild.members.me.roles.highest.comparePositionTo(role) <= 0 && !adminBool) roleSelectReturnString += `❌ I do not have permission to manage ${role}.\n`;
-                                    try {
-                                        if (interaction.member.roles.cache.has(role.id)) {
-                                            await interaction.member.roles.remove(role);
-                                            roleSelectReturnString += `✅ You no longer have ${role}!\n`
-                                        } else {
-                                            await interaction.member.roles.add(role);
-                                            roleSelectReturnString += `✅ You now have ${role}!\n`;
-                                        };
-                                    } catch (e) {
-                                        roleSelectReturnString += `❌ Failed to toggle ${role}, probably because I lack permissions.\n`;
-                                    };
-                                };
-                                return sendMessage({ client: client, interaction: interaction, content: roleSelectReturnString });
-                            } catch (e) {
-                                console.log(e);
-                                return;
+                            let serverApi = await import("../database/dbServices/server.api.js");
+                            serverApi = await serverApi.default();
+                            // Toggle selected role
+                            const rolesArray = [];
+                            for await (const value of interaction.values) {
+                                const roleArrayItem = await interaction.guild.roles.fetch(value);
+                                rolesArray.push(roleArrayItem);
                             };
+                            if (rolesArray.length < 1) return sendMessage({ interaction: interaction, content: `None of the selected roles are valid.` });
+                            let adminBool = isAdmin(interaction.guild.members.me);
+
+                            let roleSelectReturnString = "Role toggling results:\n";
+                            for await (const role of rolesArray) {
+                                let checkRoleEligibility = await serverApi.EligibleRoles.findOne({ where: { role_id: role.id } });
+                                if (!checkRoleEligibility) roleSelectReturnString += `❌ ${role} is not available to selfassign anymore.\n`;
+                                if (role.managed) roleSelectReturnString += `❌ I can't manage ${role} because it is being automatically managed by an integration.\n`;
+                                if (interaction.guild.members.me.roles.highest.comparePositionTo(role) <= 0 && !adminBool) roleSelectReturnString += `❌ I do not have permission to manage ${role}.\n`;
+                                try {
+                                    if (interaction.member.roles.cache.has(role.id)) {
+                                        await interaction.member.roles.remove(role);
+                                        roleSelectReturnString += `✅ You no longer have ${role}!\n`
+                                    } else {
+                                        await interaction.member.roles.add(role);
+                                        roleSelectReturnString += `✅ You now have ${role}!\n`;
+                                    };
+                                } catch (e) {
+                                    roleSelectReturnString += `❌ Failed to toggle ${role}, probably because I lack permissions.\n`;
+                                };
+                            };
+                            return sendMessage({ interaction: interaction, content: roleSelectReturnString });
                         } else {
                             // Other select menus
                             return;
@@ -249,7 +290,7 @@ export default async (client, interaction) => {
                         // Other component types
                         return;
                 };
-            case Discord.InteractionType.ApplicationCommandAutocomplete:
+            case InteractionType.ApplicationCommandAutocomplete:
                 let focusedOption = interaction.options.getFocused(true);
                 let choices = [];
                 // Common arguments 
@@ -288,22 +329,21 @@ export default async (client, interaction) => {
                                     };
                                 });
                                 roleObject = roleObject.sort((r, r2) => r2.position - r.position);
-                                await roleObject.forEach(role => {
+                                roleObject.forEach(role => {
                                     if (role.name.toLowerCase().includes(focusedOption.value)) choices.push({ name: role.name, value: role.value });
                                 });
                                 break;
                         };
                         break;
                     case "pokemon":
-                        let currentGeneration = 9
-                        let generationInput = interaction.options.getInteger("generation") || currentGeneration;
+                        let generationInput = interaction.options.getInteger("generation") || globalVars.pokemonCurrentGeneration;
                         let dexModified = Dex.mod(`gen${generationInput}`);
                         switch (focusedOption.name) {
                             case "pokemon":
                                 // For some reason filtering breaks the original sorted order, sort by number to restore it
                                 let pokemonSpecies = dexModified.species.all().filter(species => species.num > 0 && species.exists && !["CAP", "Future"].includes(species.isNonstandard)).sort((a, b) => a.num - b.num);
                                 let usageBool = (interaction.options.getSubcommand() == "usage");
-                                await pokemonSpecies.forEach(species => {
+                                pokemonSpecies.forEach(species => {
                                     let pokemonIdentifier = `${species.num}: ${species.name}`;
                                     if ((pokemonIdentifier.toLowerCase().includes(focusedOption.value))
                                         && !(usageBool && species.name.endsWith("-Gmax"))) choices.push({ name: pokemonIdentifier, value: species.name });
@@ -312,34 +352,34 @@ export default async (client, interaction) => {
                             case "ability":
                                 // For some reason filtering breaks the original sorted order, sort by name to restore it
                                 let abilities = dexModified.abilities.all().filter(ability => ability.exists && ability.name !== "No Ability" && !["CAP", "Future"].includes(ability.isNonstandard)).sort((a, b) => a.name.localeCompare(b.name));
-                                await abilities.forEach(ability => {
+                                abilities.forEach(ability => {
                                     if (ability.name.toLowerCase().includes(focusedOption.value.toLowerCase())) choices.push({ name: ability.name, value: ability.name });
                                 });
                                 break;
                             case "move":
                                 // For some reason filtering breaks the original sorted order, sort by name to restore it
                                 let moves = dexModified.moves.all().filter(move => move.exists && !["CAP", "Future"].includes(move.isNonstandard)).sort((a, b) => a.name.localeCompare(b.name));
-                                await moves.forEach(move => {
+                                moves.forEach(move => {
                                     if (move.name.toLowerCase().includes(focusedOption.value.toLowerCase())) choices.push({ name: move.name, value: move.name });
                                 });
                                 break;
                             case "item":
                                 // For some reason filtering breaks the original sorted order, sort by name to restore it
                                 let items = dexModified.items.all().filter(item => item.exists && !["CAP", "Future"].includes(item.isNonstandard)).sort((a, b) => a.name.localeCompare(b.name));
-                                await items.forEach(item => {
+                                items.forEach(item => {
                                     if (item.name.toLowerCase().includes(focusedOption.value.toLowerCase())) choices.push({ name: item.name, value: item.name });
                                 });
                                 break;
                             case "nature":
                                 let natures = Dex.natures.all();
-                                await natures.forEach(nature => {
+                                natures.forEach(nature => {
                                     if (nature.name.toLowerCase().includes(focusedOption.value.toLowerCase()) &&
                                         nature.exists) choices.push({ name: nature.name, value: nature.name });
                                 });
                                 break;
                             case "format":
-                                let formats = Dex.formats.all();
-                                await formats.forEach(format => {
+                                let formats = DexSim.formats.all();
+                                formats.forEach(format => {
                                     if ((format.id.includes(focusedOption.value.toLowerCase()) || format.name.toLowerCase().includes(focusedOption.value.toLowerCase())) && !format.id.includes("random")) choices.push({ name: format.id, value: format.id });
                                 });
                                 break;
@@ -461,7 +501,6 @@ export default async (client, interaction) => {
                         };
                         break;
                     case "genshin":
-                        let giAPI = `https://genshin.jmp.blue/`;
                         let giResponse;
                         switch (focusedOption.name) {
                             case "character":
@@ -491,13 +530,8 @@ export default async (client, interaction) => {
                         };
                         break;
                     case "persona5":
-                        // Submodule is documented in persona5 command
-                        let skillMapRoyal
-                        eval(fs.readFileSync("submodules/persona5_calculator/data/SkillDataRoyal.js", "utf8").replace("var", ""));
                         switch (focusedOption.name) {
                             case "persona":
-                                let personaMapRoyal;
-                                eval(fs.readFileSync("submodules/persona5_calculator/data/PersonaDataRoyal.js", "utf8").replace("var", ""));
                                 for await (const [key, value] of Object.entries(personaMapRoyal)) {
                                     if (key.toLowerCase().includes(focusedOption.value.toLowerCase())) choices.push({ name: key, value: key });
                                 };
@@ -515,8 +549,6 @@ export default async (client, interaction) => {
                                 };
                                 break;
                             case "item":
-                                let itemMapRoyal;
-                                eval(fs.readFileSync("submodules/persona5_calculator/data/ItemDataRoyal.js", "utf8").replace("var", ""));
                                 for await (const [key, value] of Object.entries(itemMapRoyal)) {
                                     if (key.toLowerCase().includes(focusedOption.value.toLowerCase()) &&
                                         !value.skillCard) choices.push({ name: key, value: key });
@@ -560,7 +592,6 @@ export default async (client, interaction) => {
                         };
                         break;
                     case "helldivers2":
-                        let apiHelldivers = "https://helldiverstrainingmanual.com/api/v1/";
                         switch (focusedOption.name) {
                             case "planet":
                                 let planetsResponse = await axios.get(`${apiHelldivers}planets`);
@@ -622,8 +653,7 @@ export default async (client, interaction) => {
                 return interaction.respond(choices).catch(e => {
                     // console.log(e);
                 });
-                break;
-            case Discord.InteractionType.ModalSubmit:
+            case InteractionType.ModalSubmit:
                 let userAvatar = interaction.user.displayAvatarURL(globalVars.displayAvatarSettings);
                 switch (interaction.customId) {
                     case "bugReportModal":
@@ -633,31 +663,33 @@ export default async (client, interaction) => {
                         const bugReportReproduce = interaction.fields.getTextInputValue('bugReportReproduce');
                         const bugReportBehaviour = interaction.fields.getTextInputValue('bugReportBehaviour');
                         const bugReportContext = interaction.fields.getTextInputValue('bugReportContext');
-                        let DMChannel = await client.channels.fetch(client.config.devChannelID);
+                        let DMChannel = await client.channels.fetch(config.devChannelID);
 
-                        const bugReportEmbed = new Discord.EmbedBuilder()
+                        const bugReportEmbed = new EmbedBuilder()
                             .setColor(globalVars.embedColor)
                             .setTitle(`Bug Report 🐛`)
                             .setThumbnail(userAvatar)
                             .setTitle(bugReportTitle)
                             .setDescription(bugReportDescription)
+                            .setFooter({ text: interaction.user.username })
                             .addFields([
                                 { name: "Reproduce:", value: bugReportReproduce, inline: false },
                                 { name: "Expected Behaviour:", value: bugReportBehaviour, inline: false },
                                 { name: "Device Context:", value: bugReportContext, inline: false }
-                            ])
-                            .setFooter({ text: interaction.user.username });
+                            ]);
                         await DMChannel.send({ content: interaction.user.id, embeds: [bugReportEmbed] });
-                        return sendMessage({ client: client, interaction: interaction, content: `Thanks for the bug report!\nIf your DMs are open you may get a DM from ${client.user.username} with a follow-up.` });
-                        break;
+                        return sendMessage({ interaction: interaction, content: `Thanks for the bug report!\nIf your DMs are open you may get a DM with a follow-up.` });
                     case "modMailModal":
                         // Modmail
                         const modMailTitle = interaction.fields.getTextInputValue('modMailTitle');
                         const modMailDescription = interaction.fields.getTextInputValue('modMailDescription');
-
-                        let profileButtons = new Discord.ActionRowBuilder()
-                            .addComponents(new Discord.ButtonBuilder({ label: 'Profile', style: Discord.ButtonStyle.Link, url: `discord://-/users/${interaction.user.id}` }));
-                        const modMailEmbed = new Discord.EmbedBuilder()
+                        const profileButton = new ButtonBuilder()
+                            .setLabel("Profile")
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(`discord://-/users/${interaction.user.id}`);
+                        let profileButtons = new ActionRowBuilder()
+                            .addComponents(profileButton);
+                        const modMailEmbed = new EmbedBuilder()
                             .setColor(globalVars.embedColor)
                             .setTitle(`Mod Mail 💌`)
                             .setThumbnail(userAvatar)
@@ -666,8 +698,7 @@ export default async (client, interaction) => {
                             .setFooter({ text: `${interaction.user.username} (${interaction.user.id})` });
 
                         await interaction.guild.publicUpdatesChannel.send({ embeds: [modMailEmbed], components: [profileButtons] });
-                        return sendMessage({ client: client, interaction: interaction, content: `Your message has been sent to the mods!\nModerators should get back to you as soon as soon as possible.` });
-                        break;
+                        return sendMessage({ interaction: interaction, content: `Your message has been sent to the mods!\nModerators should get back to you as soon as soon as possible.` });
                     case pkmQuizModalId:
                         let pkmQuizGuessResultEphemeral = false;
                         if (interaction.message.flags.has("Ephemeral")) pkmQuizGuessResultEphemeral = true;
@@ -680,7 +711,7 @@ export default async (client, interaction) => {
                             let pkmQuizMessageObject = await getWhosThatPokemon({ pokemon: pkmQuizCorrectAnswer, winner: interaction.user });
                             interaction.update({ content: pkmQuizMessageObject.content, files: pkmQuizMessageObject.files, components: [] });
                         } else {
-                            return sendMessage({ client: client, interaction: interaction, content: `${interaction.user} guessed incorrectly: \`${pkmQuizModalGuess}\`.`, ephemeral: pkmQuizGuessResultEphemeral });
+                            return sendMessage({ interaction: interaction, content: `${interaction.user} guessed incorrectly: \`${pkmQuizModalGuess}\`.`, ephemeral: pkmQuizGuessResultEphemeral });
                         };
                         break;
                 };
@@ -690,6 +721,6 @@ export default async (client, interaction) => {
         };
 
     } catch (e) {
-        logger(e, client, interaction);
+        logger({ exception: e, interaction: interaction });
     };
 };

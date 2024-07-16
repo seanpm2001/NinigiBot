@@ -1,15 +1,21 @@
-import Discord from "discord.js";
+import {
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
+} from "discord.js";
 import globalVars from "../../objects/globalVars.json" with { type: "json" };
 import { getUser } from "../../database/dbServices/user.api.js";
 import parseDate from "../../util/parseDate.js";
-import isAdmin from "../../util/isAdmin.js";
 import badgeEmotes from "../../objects/discord/badgeEmotes.json" with { type: "json" };
+import areEmotesAllowed from "../areEmotesAllowed.js";
 
 const number_of_pages = 2;
 
-export default async (client, interaction, page, user) => {
-    user = await client.users.fetch(user.id, { force: true });
-    let member = await interaction.guild.members.fetch(user.id).catch(e => { return null; });
+export default async (interaction, page, user) => {
+    user = await interaction.client.users.fetch(user.id, { force: true });
+    let member = null;
+    if (interaction.inGuild()) member = await interaction.guild.members.fetch(user.id).catch(e => { return null; });
     // Accent color
     let embedColor = globalVars.embedColor;
     if (user.accentColor) embedColor = user.accentColor;
@@ -18,20 +24,35 @@ export default async (client, interaction, page, user) => {
     if (member) serverAvatar = member.displayAvatarURL(globalVars.displayAvatarSettings);
     let avatar = user.displayAvatarURL(globalVars.displayAvatarSettings);
 
-    const profileEmbed = new Discord.EmbedBuilder()
+    const profileEmbed = new EmbedBuilder()
         .setColor(embedColor)
         .setAuthor({ name: user.username, iconURL: avatar })
         .setThumbnail(serverAvatar);
-    let profileButtons = new Discord.ActionRowBuilder()
-        .addComponents(new Discord.ButtonBuilder({ label: 'Profile', style: Discord.ButtonStyle.Link, url: `discord://-/users/${user.id}` }));
-    if (page > 0) profileButtons.addComponents(new Discord.ButtonBuilder({ customId: `usf${page - 1}:${user.id}`, style: Discord.ButtonStyle.Primary, emoji: '⬅️' }));
-    if (page < number_of_pages - 1 && member && !user.bot) profileButtons.addComponents(new Discord.ButtonBuilder({ customId: `usf${page + 1}:${user.id}`, style: Discord.ButtonStyle.Primary, emoji: '➡️' }));
+    const profileButton = new ButtonBuilder()
+        .setLabel("Profile")
+        .setStyle(ButtonStyle.Link)
+        .setURL(`discord://-/users/${user.id}`);
+    let profileButtons = new ActionRowBuilder()
+        .addComponents(profileButton);
+    if (page > 0) {
+        const previousPageButton = new ButtonBuilder()
+            .setCustomId(`usf${page - 1}:${user.id}`)
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('⬅️')
+        profileButtons.addComponents(previousPageButton);
+    };
+    if (page < number_of_pages - 1 && member && !user.bot) {
+        const nextPageButton = new ButtonBuilder()
+            .setCustomId(`usf${page + 1}:${user.id}`)
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('➡️')
+        profileButtons.addComponents(nextPageButton);
+    };
 
     let user_db = await getUser(user.id, ['swcode', 'money', 'birthday', 'user_id', 'food']);
     switch (page) {
         case 0:
-
-            let adminBot = isAdmin(client, interaction.guild.members.me);
+            const emotesAllowed = areEmotesAllowed(interaction);
             let switchCode = user_db.swcode;
             let birthday = user_db.birthday;
             let birthdayParsed = parseDate(birthday);
@@ -59,7 +80,7 @@ export default async (client, interaction, page, user) => {
             // Profile badges
             let badgesArray = [];
             let badgesString = "";
-            if (interaction.guild.members.me.permissions.has(Discord.PermissionFlagsBits.UseExternalEmojis) || adminBot) {
+            if (emotesAllowed) {
                 try {
                     if (user.bot) badgesArray.push("🤖");
                     let guildOwner = await interaction.guild.fetchOwner();
@@ -79,10 +100,13 @@ export default async (client, interaction, page, user) => {
                     // console.log(e);
                 };
             };
-            let joinRank = await getJoinRank(user, interaction.guild);
-            let joinPercentage = Math.ceil(joinRank / interaction.guild.memberCount * 100);
-            let joinRankText = `${joinRank}/${interaction.guild.memberCount} (${joinPercentage}%)`;
-            profileEmbed.addFields([{ name: "Account:", value: `${user} ${badgesString}`, inline: true }]);
+            let joinRank, joinPercentage, joinRankText = null;
+            if (interaction.inGuild()) {
+                joinRank = await getJoinRank(user, interaction.guild);
+                joinPercentage = Math.ceil(joinRank / interaction.guild.memberCount * 100);
+                joinRankText = `${joinRank}/${interaction.guild.memberCount} (${joinPercentage}%)`;
+            };
+            profileEmbed.addFields([{ name: "Account:", value: `${user}\n${badgesString}`, inline: true }]);
             if (birthday && birthdayParsed && member) profileEmbed.addFields([{ name: "Birthday:", value: birthdayParsed, inline: true }]);
             if (switchCode && switchCode !== 'None' && member) profileEmbed.addFields([{ name: "Switch FC:", value: switchCode, inline: true }]);
             if (joinRank) profileEmbed.addFields([{ name: "Join Ranking:", value: joinRankText, inline: true }]);
@@ -123,7 +147,6 @@ export default async (client, interaction, page, user) => {
             break;
     };
     return {
-        client: client,
         interaction: interaction,
         embeds: profileEmbed,
         components: profileButtons
@@ -140,11 +163,4 @@ async function getJoinRank(user, guild) {
     for (let i = 0; i < arr.length; i++) {
         if (arr[i].id == user.id) return i + 1;
     };
-};
-
-function capitalizeString(str) {
-    let firstCharUpper = str[0].toUpperCase();
-    let rest = str.substring(1).toLowerCase();
-    let string = `${firstCharUpper}${rest} `;
-    return string;
 };

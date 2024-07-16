@@ -1,52 +1,56 @@
-import Discord from "discord.js";
-import logger from "../../util/logger.js";
+import {
+    EmbedBuilder,
+    SlashCommandBuilder,
+    SlashCommandStringOption,
+    SlashCommandBooleanOption
+} from "discord.js";
+import axios from "axios";
+import {
+    uniqueNamesGenerator,
+    names
+} from 'unique-names-generator'; // Random name generator that can be seeded
 import sendMessage from "../../util/sendMessage.js";
 import globalVars from "../../objects/globalVars.json" with { type: "json" };
-import axios from "axios";
-import { uniqueNamesGenerator, names } from 'unique-names-generator'; // Random name generator that can be seeded
 
-export default async (client, interaction, ephemeral) => {
-    try {
-        let ephemeralArg = interaction.options.getBoolean("ephemeral");
-        if (ephemeralArg !== null) ephemeral = ephemeralArg;
+let catAAS = "https://cataas.com/cat";
 
-        let catText = interaction.options.getString("text");
-        let standardCatText = "Meow";
-        if (!catText) catText = standardCatText;
+export default async (interaction, ephemeral) => {
+    let ephemeralArg = interaction.options.getBoolean("ephemeral");
+    if (ephemeralArg !== null) ephemeral = ephemeralArg;
 
-        let catAAS = "https://cataas.com/cat";
-        let catAPI = `${catAAS}?json=true`;
-        let response = await axios.get(catAPI);
-        let catImage = null;
-        let catNameSeed = null;
-        catImage = `${catAAS}/${response.data._id}`;
-        if (catText !== standardCatText) catImage += `/says/${encodeURIComponent(encodeURIComponent(catText))}`; // Double encode to escape periods and slashes
-        catNameSeed = response.data._id;
-        let catName = uniqueNamesGenerator({
-            dictionaries: [names],
-            seed: catNameSeed
-        });
-        const catEmbed = new Discord.EmbedBuilder()
-            .setColor(globalVars.embedColor)
-            .setImage(catImage)
-            .setFooter({ text: `"${catText}" -${catName}` });
-        return sendMessage({ client: client, interaction: interaction, embeds: catEmbed, ephemeral: ephemeral });
+    let catText = interaction.options.getString("text");
+    let standardCatText = "Meow";
+    if (!catText) catText = standardCatText;
 
-    } catch (e) {
-        logger(e, client, interaction);
-    };
+    let catAPI = `${catAAS}?json=true`;
+    let response = await axios.get(catAPI);
+    let catImage = null;
+    let catNameSeed = null;
+    catImage = `${catAAS}/${response.data._id}`;
+    if (catText !== standardCatText) catImage += `/says/${encodeURIComponent(encodeURIComponent(catText))}`; // Double encode to escape periods and slashes
+    catNameSeed = response.data._id;
+    let catName = uniqueNamesGenerator({
+        dictionaries: [names],
+        seed: catNameSeed
+    });
+    const catEmbed = new EmbedBuilder()
+        .setColor(globalVars.embedColor)
+        .setImage(catImage)
+        .setFooter({ text: `"${catText}" -${catName}` });
+    return sendMessage({ interaction: interaction, embeds: catEmbed, ephemeral: ephemeral });
 };
 
-export const config = {
-    name: "randomcat",
-    description: "Get a random cat image.",
-    options: [{
-        name: "text",
-        type: Discord.ApplicationCommandOptionType.String,
-        description: "Text to put over the image."
-    }, {
-        name: "ephemeral",
-        type: Discord.ApplicationCommandOptionType.Boolean,
-        description: "Whether the reply will be private."
-    }]
-};
+// String options
+const textOption = new SlashCommandStringOption()
+    .setName("text")
+    .setDescription("Text to put over the image.");
+// Boolean options
+const ephemeralOption = new SlashCommandBooleanOption()
+    .setName("ephemeral")
+    .setDescription(globalVars.ephemeralOptionDescription);
+// Final command
+export const commandObject = new SlashCommandBuilder()
+    .setName("randomcat")
+    .setDescription("Get a random cat image.")
+    .addStringOption(textOption)
+    .addBooleanOption(ephemeralOption);

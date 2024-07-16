@@ -8,9 +8,12 @@
         "614979959156375567"
     ],
     "sysbotLogChannelID": "771363190780854293",
+    "subscriptionSKUID": "1164974692889808999",
     "currency": "💰",
     "embedColor": "#219DCD",
-    "lackPerms": "You do not have the required permissions to do this.",
+    "embedColorError": "#FF0000",
+    "lackPermsString": "You do not have the required permissions to do this.",
+    "ephemeralOptionDescription": "Whether the reply will be private.",
     "starboardLimit": 3,
     "battling": {
         "yes": false
@@ -19,5 +22,6 @@
         "size": 512,
         "extension": "png",
         "dynamic": true
-    }
+    },
+    "pokemonCurrentGeneration": 9
 }

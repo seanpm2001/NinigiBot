@@ -1,19 +1,21 @@
-import Discord from "discord.js";
+import { codeBlock } from "discord.js";
 import getTime from "./getTime.js";
 import sendMessage from "./sendMessage.js";
 import util from "util";
+import config from "../config.json" with { type: "json" };
 
-export default async (exception, client, interaction = null) => {
+export default async ({ exception, client, interaction = null }) => {
     // Note: interaction may be a message
     try {
-        let timestamp = await getTime(client);
+        let timestamp = getTime();
         let exceptionString = exception.toString();
         let errorInspectResult = util.inspect(exception, { depth: 2 });
+        if (!client && interaction) client = interaction.client;
         if (exceptionString.includes("Missing Access")) {
             return; // Permission error; guild-side mistake
         } else if (exceptionString.includes("Internal Server Error") && !message.author) {
             // If this happens, it's probably a Discord issue. If this return occurs too frequently it might need to be disabled. Also only procs for interactions, not messages. Might want to write a better type check.
-            return sendMessage({ client: client, interaction: interaction, content: "An internal server error occurred at Discord. Please check back later to see if Discord has fixed the issue.", ephemeral: true });
+            return sendMessage({ interaction: interaction, content: "An internal server error occurred at Discord. Please check back later to see if Discord has fixed the issue.", ephemeral: true });
         } else if (exceptionString.includes("Unknown interaction")) {
             return; // Expired interaction, can't reply to said interaction
         } else if (exceptionString.includes("ETIMEDOUT") || exceptionString.includes("ECONNREFUSED") || exceptionString.includes("ECONNRESET")) {
@@ -30,9 +32,9 @@ export default async (exception, client, interaction = null) => {
             if (interaction.member) user = interaction.author;
             if (interaction.user) user = interaction.user;
         };
-        let exceptionCode = Discord.codeBlock(errorInspectResult); // Used to be exception.stack
+        let exceptionCode = codeBlock(errorInspectResult); // Used to be exception.stack
         let messageContentCode = "";
-        if (interaction && interaction.content && interaction.content.length > 0) messageContentCode = Discord.codeBlock(interaction.content);
+        if (interaction && interaction.content && interaction.content.length > 0) messageContentCode = codeBlock(interaction.content);
         let interactionOptions = "\n";
         let subCommand = "";
         if (interaction && interaction.options) {
@@ -58,9 +60,9 @@ Options: ${interactionOptions}
 Error:\n${exceptionCode}
 ${messageContentCode}` : `An error occurred:\n${exceptionCode}`;
 
-        if (baseMessage.length > 2000) baseMessage = baseMessage.substring(0, 1994) + `\`\`\`...`;
+        if (baseMessage.length > 2000) baseMessage = baseMessage.substring(0, 1990) + `...\`\`\``;
         // Fix cross-shard logging sometime
-        let devChannel = await client.channels.fetch(client.config.devChannelID);
+        let devChannel = await client.channels.fetch(config.devChannelID);
         if (baseMessage.includes("Missing Permissions")) {
             try {
                 return interaction.reply(`I lack permissions to perform the requested action.`);
