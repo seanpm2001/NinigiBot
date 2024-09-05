@@ -1,10 +1,10 @@
 import {
+    InteractionContextType,
     EmbedBuilder,
     SlashCommandBooleanOption,
     SlashCommandBuilder,
     SlashCommandRoleOption
 } from "discord.js";
-import logger from "../../util/logger.js";
 import sendMessage from "../../util/sendMessage.js";
 import globalVars from "../../objects/globalVars.json" with { type: "json" };
 
@@ -60,6 +60,6 @@ const ephemeralOption = new SlashCommandBooleanOption()
 export const commandObject = new SlashCommandBuilder()
     .setName("roleinfo")
     .setDescription("Displays info about a role.")
-    .setDMPermission(false)
+    .setContexts([InteractionContextType.Guild])
     .addRoleOption(roleOption)
     .addBooleanOption(ephemeralOption);

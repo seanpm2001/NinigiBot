@@ -4,12 +4,10 @@ import {
     ButtonBuilder,
     ButtonStyle
 } from "discord.js";
-import globalVars from "../../objects/globalVars.json" with { type: "json" };
-import monstersJSON from "../../submodules/monster-hunter-DB/monsters.json" with { type: "json" };
-import elementEmojis from "../../objects/monsterhunter/elementEmojis.json" with { type: "json" };
-import ailmentEmojis from "../../objects/monsterhunter/ailmentEmojis.json" with { type: "json" };
 import getWikiURL from "../getWikiURL.js";
 import urlExists from "../urlExists.js";
+import globalVars from "../../objects/globalVars.json" with { type: "json" };
+import monstersJSON from "../../submodules/monster-hunter-DB/monsters.json" with { type: "json" };
 
 let iconsRepo = "https://github.com/CrimsonNynja/monster-hunter-DB/blob/master/icons/";
 let mhWiki = "https://static.wikia.nocookie.net/monsterhunter/images/";
@@ -18,7 +16,7 @@ let MHRise = "Monster Hunter Rise";
 let MHW = "Monster Hunter World";
 let MHGU = "Monster Hunter Generations Ultimate";
 
-export default async (monsterData) => {
+export default async (monsterData, emojis) => {
     let gameDBName;
     // Get icon, description and game appearances
     let monsterIcon;
@@ -103,9 +101,9 @@ export default async (monsterData) => {
     let monsterElements = "";
     let monsterWeaknesses = "";
     let monsterAilments = "";
-    if (monsterData.elements) monsterElements = getStringFromObject(monsterData.elements, elementEmojis);
-    if (monsterData.weakness) monsterWeaknesses = getStringFromObject(monsterData.weakness, elementEmojis);
-    if (monsterData.ailments) monsterAilments = getStringFromObject(monsterData.ailments, ailmentEmojis);
+    if (monsterData.elements) monsterElements = getStringFromObject(monsterData.elements, emojis, "Element");
+    if (monsterData.weakness) monsterWeaknesses = getStringFromObject(monsterData.weakness, emojis, "Element");
+    if (monsterData.ailments) monsterAilments = getStringFromObject(monsterData.ailments, emojis, "Ailment");
 
     let buttonArray = [];
     let subSpeciesButtons = new ActionRowBuilder();
@@ -159,10 +157,18 @@ export default async (monsterData) => {
     return messageObject;
 };
 
-function getStringFromObject(object, emojis) {
+// Type is "Ailment" or "Element"
+function getStringFromObject(object, emojis, type) {
     let itemArray = [];
     object.forEach(item => {
-        let itemEmoji = emojis[item];
+        let emojiType = type;
+        let emojiName = item;
+        // Use matching elemental emojis for blights
+        if (item.endsWith("blight") && type == "Ailment") {
+            emojiType = "Element";
+            emojiName = item.replace("blight", "");
+        };
+        let itemEmoji = emojis.find(emoji => emoji.name == `MH${emojiType}${emojiName}`);
         if (itemEmoji) {
             let itemString = `${itemEmoji}${item}`;
             itemArray.push(itemString);
@@ -170,5 +176,5 @@ function getStringFromObject(object, emojis) {
             itemArray.push(item);
         };
     });
-    return itemArray.join(", ");
+    return itemArray.join("\n");
 };

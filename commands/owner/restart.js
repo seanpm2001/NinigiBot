@@ -1,4 +1,5 @@
 import {
+    InteractionContextType,
     codeBlock,
     SlashCommandBuilder,
     SlashCommandBooleanOption
@@ -35,7 +36,7 @@ export default async (interaction, ephemeral) => {
     if (dbinit) await runCommand("node dbInit.js");
     // Return messages then destroy
     let restartString = "Restarting.";
-    let installResultString = codeBlock(installResult.stdout);
+    let installResultString = codeBlock("fix", installResult.stdout);
     if (npmInstall) restartString = `NPM installation result:${installResultString}${restartString}`;
     if (removeInteractions) restartString += "\nRemoving all slash commands, context menus etc. This might take a bit.";
     await sendMessage({ interaction: interaction, content: restartString });
@@ -71,7 +72,7 @@ const dbInitOption = new SlashCommandBooleanOption()
 export const commandObject = new SlashCommandBuilder()
     .setName("restart")
     .setDescription("Restart bot and reload all files.")
-    .setDMPermission(false)
+    .setContexts([InteractionContextType.Guild])
     .addBooleanOption(resetInteractionsOptions)
     .addBooleanOption(npmInstallOption)
     .addBooleanOption(dbInitOption);
