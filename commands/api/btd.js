@@ -6,7 +6,8 @@ import {
     SlashCommandSubcommandBuilder,
     codeBlock,
     ActionRowBuilder,
-    SlashCommandSubcommandGroupBuilder
+    SlashCommandSubcommandGroupBuilder,
+    hyperlink
 } from "discord.js";
 import axios from "axios";
 import sendMessage from "../../util/sendMessage.js";
@@ -37,12 +38,13 @@ export default async (interaction, ephemeral) => {
             let saveData = saveResponse.data.body;
             let userData = userResponse.data.body;
             // Rank string
-            let rankString = `\nLevel: ${userData.rank}`;
-
+            let rankString = "\nLevel: ";
             if (userData.veteranRank > 0) {
                 let veteranEmoji = interaction.client.application.emojis.cache.find(emoji => emoji.name == "BTD6LevelVeteran");
-                rankString += `\nVeteran Level: ${userData.veteranRank}`;
+                rankString += userData.veteranRank;
                 if (veteranEmoji) rankString += ` ${veteranEmoji}`;
+            } else {
+                rankString += userData.rank;
             };
             // General stats
             let userDescription = `${rankString}\nTotal EXP: ${saveData.xp + saveData.veteranXp}\nGames Played: ${saveData.gamesPlayed}`;
@@ -89,7 +91,7 @@ export default async (interaction, ephemeral) => {
         btd6Embed
             .setTitle("Error")
             .setColor(globalVars.embedColorError)
-            .setDescription(`The following error occurred while getting data from the API:${codeBlock("fix", apiError)}Read more on the Ninja Kiwi API and Open Access Keys (OAKs) [here](<https://support.ninjakiwi.com/hc/en-us/articles/13438499873937-Open-Data-API>).`);
+            .setDescription(`The following error occurred while getting data from the API:${codeBlock("fix", apiError)}Read more on the Ninja Kiwi API and Open Access Keys (OAKs) ${hyperlink("here", "https://support.ninjakiwi.com/hc/en-us/articles/13438499873937-Open-Data-API")}.`);
     };
     return sendMessage({ interaction: interaction, embeds: btd6Embed, components: btd6ActionRow, ephemeral: ephemeral });
 };

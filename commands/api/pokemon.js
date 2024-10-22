@@ -7,7 +7,9 @@ import {
     SlashCommandStringOption,
     SlashCommandIntegerOption,
     SlashCommandBooleanOption,
-    SlashCommandSubcommandBuilder
+    SlashCommandSubcommandBuilder,
+    bold,
+    hyperlink
 } from "discord.js";
 import axios from "axios";
 import { Dex } from '@pkmn/dex';
@@ -38,9 +40,9 @@ export default async (interaction, ephemeral) => {
     if (ephemeralArg !== null) ephemeral = ephemeralArg;
     // Bools
     let learnsetBool = false;
+    let shinyBool = false;
     let learnsetArg = interaction.options.getBoolean("learnset");
     if (learnsetArg === true) learnsetBool = true;
-    let shinyBool = false;
     let shinyArg = interaction.options.getBoolean("shiny");
     if (shinyArg === true) shinyBool = true;
     // Variables
@@ -49,17 +51,12 @@ export default async (interaction, ephemeral) => {
     let pokemonInput = interaction.options.getString("pokemon");
     let moveInput = interaction.options.getString("move");
     let pokemonButtons = new ActionRowBuilder();
-    let pokemonFiles = null;
-    let nameBulbapedia = null;
-    let linkBulbapedia = null;
-    let colorPokemonName = null;
+    let pokemonFiles, nameBulbapedia, linkBulbapedia, colorPokemonName, pokemon, move = null;
     // Set generation
     let generation = interaction.options.getInteger("generation") || globalVars.pokemon.currentGeneration;
     let genData = gens.get(generation);
     let allPokemonGen = Array.from(genData.species).filter(pokemon => pokemon.exists && pokemon.num > 0 && !["CAP", "Future"].includes(pokemon.isNonstandard));
     // Used for pokemon and learn
-    let pokemon = null;
-    let move = null;
     if (nameInput) {
         pokemon = Dex.species.get(nameInput);
         move = Dex.moves.get(nameInput);
@@ -169,9 +166,11 @@ export default async (interaction, ephemeral) => {
 
             let moveLearnPool = [];
             for (const pokemon of allPokemonGen) {
-                if (isIdenticalForm(pokemon.name) || pokemon.name.startsWith("Terapagos-")) continue;
-                let canLearnBool = await genData.learnsets.canLearn(pokemon.name, move.name);
-                if (canLearnBool) moveLearnPool.push(pokemon.name);
+                if (isIdenticalForm(pokemon.name) ||
+                    pokemon.name.startsWith("Terapagos-") ||
+                    pokemon.name.endsWith("-Origin") ||
+                    (pokemon.name == "Smeargle" && move.id !== "sketch")) continue;
+                if (DexSim.forGen(generation).species.getMovePool(pokemon.id).has(move.id)) moveLearnPool.push(pokemon.name);
             };
             let moveLearnPoolString = moveLearnPool.join(", ");
             if (moveLearnPoolString.length > 1024) moveLearnPoolString = `${moveLearnPool.length} Pokémon!`;
@@ -251,10 +250,11 @@ export default async (interaction, ephemeral) => {
             };
             // Leading newlines get ignored if format.desc is empty
             let formatDescription = (format.desc + "\n").replace(/&eacute;/g, "é");
+            let ladderHyperlink = hyperlink("ladder", `https://pokemonshowdown.com/ladder/${format.id}`);
             if (format.searchShow) {
-                formatDescription += `\nThis format has an ongoing [ladder](https://pokemonshowdown.com/ladder/${format.id}).`;
+                formatDescription += `\nThis format has an ongoing ${ladderHyperlink}.`;
             } else if (format.rated) {
-                formatDescription += `\nThis format has a [ladder](https://pokemonshowdown.com/ladder/${format.id}) but can not currently be played on said ladder.`;
+                formatDescription += `\nThis format has a ${ladderHyperlink} but can not currently be played on said ladder.`;
             } else {
                 formatDescription += "\nThis format does not have a ladder.";
             };
@@ -276,7 +276,7 @@ export default async (interaction, ephemeral) => {
             if (format.unbanlist && format.unbanlist.length > 0) unbanlist = format.unbanlist.join(", ");
 
             pokemonEmbed
-                .setTitle(`${format.name} (${format.section})`)
+                .setTitle(format.name)
                 .setDescription(formatDescription)
             if (ruleset) pokemonEmbed.addFields([{ name: "Ruleset:", value: ruleset, inline: false }]);
             if (banlist) pokemonEmbed.addFields([{ name: "Banlist:", value: banlist, inline: false }]);
@@ -311,7 +311,7 @@ export default async (interaction, ephemeral) => {
                     if (prevoLearnset && prevoLearnset.learnset) learnDataToAdd = getLearnData(prevoLearnset.learnset[move.id]);
                     if (learnDataToAdd.length > 0) {
                         learnsMove = true;
-                        learnInfo += `**As ${prevo.name}:**\n${learnDataToAdd}`;
+                        learnInfo += `${bold(`As ${prevo.name}:`)}\n${learnDataToAdd}`;
                     };
                     // Set up next loop
                     prevo = Dex.species.get(prevo.prevo);
@@ -385,10 +385,11 @@ export default async (interaction, ephemeral) => {
             let genericDataSplitPokemon = null;
             let pokemonDataSplitLine = null;
             if (pokemon) {
-                let usagePokemonString = usageArray.find(element => element.startsWith(pokemon.name + " ")); // Space is to exclude matching more popular subforms
+                const pokemonNameSearch = pokemon.name + " "; // Space is to exclude matching more popular subforms
+                let usagePokemonString = usageArray.find(element => element.startsWith(pokemonNameSearch));
                 if (!usagePokemonString) return sendMessage({ interaction: interaction, content: `Could not find any data for \`${pokemon.name}\` in ${formatInput} during the specified month.`, components: usageButtons });
                 // Data from generic usage page
-                genericDataSplitPokemon = genericUsageResponse.data.split(pokemon.name);
+                genericDataSplitPokemon = genericUsageResponse.data.split(pokemonNameSearch);
                 pokemonDataSplitLine = genericDataSplitPokemon[1].split("|");
                 rawUsage = pokemonDataSplitLine[2].trim();
                 usagePercentage = `${Math.round(pokemonDataSplitLine[1].trim().replace("%", "") * 100) / 100}%`;
@@ -424,6 +425,8 @@ export default async (interaction, ephemeral) => {
             } else {
                 // Format generic data display
                 let usageList = [];
+                let usageListPart1 = [];
+                let usageListPart2 = [];
                 let usageListIndex = 1;
                 await usageArray.forEach(element => {
                     nameInput = element.split("Raw count")[0].trim();
@@ -434,8 +437,6 @@ export default async (interaction, ephemeral) => {
                     usageList.push(`${usageListIndex} ${nameInput} ${usagePercentage}`);
                     usageListIndex++;
                 });
-                let usageListPart1 = [];
-                let usageListPart2 = [];
                 usageList.forEach(element => { if (usageListPart1.length < 50) usageListPart1.push(element); else if (usageListPart2.length < 50) usageListPart2.push(element) });
                 pokemonEmbed
                     .setTitle(`Usage for ${formatInput} ${rating}+ (${stringMonth}/${year})`)
@@ -481,14 +482,14 @@ export default async (interaction, ephemeral) => {
             let cardFooter = `${cardSetData.name} ${cardData.number}/${cardSetData.printedTotal}\n`;
             if (cardData.regulationMark) cardFooter += `Regulation ${cardData.regulationMark}`;
             if (cardData.legalities) {
-                cardFooter += ": "; // Seperation between regulation and legalities
+                if (cardData.regulationMark) cardFooter += ": "; // Seperation between regulation and legalities
                 Object.keys(cardData.legalities).forEach(legality => cardFooter += `✅ ${legality.charAt(0).toUpperCase() + legality.slice(1)} `); // Capitalize first character
             };
             if (cardData.abilities) cardData.abilities.forEach(ability => pokemonEmbed.addFields([{ name: `${ability.type}: ${ability.name}`, value: ability.text, inline: false }]));
             if (cardData.attacks) cardData.attacks.forEach(attack => {
                 let attackName = attack.name;
                 if (attack.damage) attackName += ` - ${attack.damage}`;
-                let attackDescription = attack.text || "No extra effect.";
+                let attackDescription = attack.text || "No additional effect.";
                 if (attack.cost) {
                     attackName = ` ${attackName}`; // Space looks better between cost and name
                     attack.cost.reverse().forEach(cost => attackName = `${interaction.client.application.emojis.cache.find(emoji => emoji.name == cardTypeEmojiPrefix + cost) || ""}${attackName}`); // Reverse because we are adding to the front. || "" is for the case where the emoji doesn't exist
@@ -619,7 +620,7 @@ function mapUsageString(string, seperator) {
     return string.split(seperator).map(function (x) { return x.trim(); }).join(`${seperator}\n`).replace(/   /g, "");
 };
 
-// Set nature choices. The max is 25 and there are exactly 25 natures. 
+// Set nature choices. The max is 25 and there are exactly 25 natures.
 // If Gamefreak ever adds a 26th nature this will need to be moved back into autocomplete.
 let natureChoices = [];
 allNatures.forEach(nature => {
